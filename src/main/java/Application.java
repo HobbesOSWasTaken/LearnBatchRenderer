@@ -1,9 +1,12 @@
+import com.sun.tools.javac.util.ArrayUtils;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.*;
 
 import java.nio.*;
+import java.util.ArrayList;
+import java.util.Random;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -93,29 +96,37 @@ public class Application {
         GLUtil.setupDebugMessageCallback();
 
         // Set the clear color
-        glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
-        //GL30.glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-        Vertex v0 = new Vertex(); v0.setXYZW(-0.5f, 0.5f, 0f, 1.0f); v0.setRGBA(1.0f, 0.0f, 0.0f, 1.0f);
-        Vertex v1 = new Vertex(); v1.setXYZW(-0.5f, -0.5f, 0f, 1.0f); v1.setRGBA(0.0f, 1.0f, 0.0f, 1.0f);
-        Vertex v2 = new Vertex(); v2.setXYZW( 0.5f,-0.5f, 0f, 1.0f); v2.setRGBA(0.0f, 0.0f, 1.0f, 1.0f);
-        Vertex v3 = new Vertex(); v3.setXYZW( 0.5f, 0.5f, 0f, 1.0f); v3.setRGBA(0.0f, 0.0f, 0.0f, 1.0f);
-        Vertex[] vertices = new Vertex[] {v0, v1, v2, v3};
+        Random random = new Random();
+        int numBars = random.nextInt(96) + 5;
+        float[] barHeights = new float[numBars];
 
-        // VBO (Vertex Buffer Object)
-        FloatBuffer vboBuffer = BufferUtils.createFloatBuffer(vertices.length * Vertex.elementCount);
-        for(int vertex = 0; vertex < vertices.length; vertex++) {
-            //vboBuffer.put(vertices[vertex].getElements());
-            vboBuffer.put(vertices[vertex].getXYZW());
-            vboBuffer.put(vertices[vertex].getRGBA());
+        for(int index = 0; index < barHeights.length; index++) {
+            barHeights[index] = Math.round(random.nextFloat() * 100.0f) / 100.0f;;
         }
-        vboBuffer.flip();
+
+        ArrayList<Quad> quads = new ArrayList<Quad>();
+        Quad quad1 = new Quad(-0.75f, -0.25f, 0.5f, 0.5f);
+        Quad quad2 = new Quad(0.25f, -0.25f, 0.5f, 0.5f);
+        quads.add(quad1);
+        quads.add(quad2);
 
         // IBO (Index Buffer Object)
-        int[] indices = {
-                0, 1, 2,
-                2, 3, 0
-        };
+        // 768 for 16kb of vertex memory
+        int[] indices = new int[quads.size() * Quad.indicesPerQuad];
+        int offset = 0;
+        for(int i = 0; i < indices.length; i += 6) {
+            indices[i + 0] = 0 + offset;
+            indices[i + 1] = 1 + offset;
+            indices[i + 2] = 2 + offset;
+
+            indices[i + 3] = 2 + offset;
+            indices[i + 4] = 3 + offset;
+            indices[i + 5] = 0 + offset;
+
+            offset += 4;
+        }
         IntBuffer iboBuffer = BufferUtils.createIntBuffer(indices.length);
         iboBuffer.put(indices);
         iboBuffer.flip();
@@ -124,10 +135,12 @@ public class Application {
         int vaoID = GL30.glGenVertexArrays();
         GL30.glBindVertexArray(vaoID);
 
-        // Bind Buffer Data TODO: Make Dynamic
+        // Bind Buffer Data
         int vboID = GL30.glGenBuffers();
         GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vboID);
-        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, vboBuffer, GL30.GL_STATIC_DRAW);
+        // Call is now dynamic and so we allocate memory (16kB) or 512 vertices (8 floats per vertex) (768 indices)
+        FloatBuffer vboBuffer = MemoryUtil.memAllocFloat(2 * Quad.verticesPerQuad * 512);
+        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, vboBuffer.capacity() * Float.BYTES, GL30.GL_DYNAMIC_DRAW);
         GL30.glVertexAttribPointer(0, Vertex.positionElementCount, Vertex.type, false, Vertex.stride, Vertex.positionOffset);
         GL30.glVertexAttribPointer(1, Vertex.colorElementCount, Vertex.type, false, Vertex.stride, Vertex.colorOffset);
 
@@ -146,6 +159,27 @@ public class Application {
         while ( !glfwWindowShouldClose(window) ) {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
 
+            // VBO (Vertex Buffer Object)
+            Vertex[] vertices = new Vertex[Quad.verticesPerQuad * quads.size()];
+            if(!quads.isEmpty()) {
+                System.arraycopy(quads.get(0).getVertices(), 0, vertices, 0, quads.get(0).getVertices().length);
+                for (int index = 1; index < quads.size(); index++) {
+                    System.arraycopy(quads.get(index).getVertices(), 0, vertices, quads.get(index - 1).getVertices().length, quads.get(index).getVertices().length);
+                }
+            }
+
+            for(int vertex = 0; vertex < vertices.length; vertex++) {
+                vboBuffer.put(vertices[vertex].getXYZW());
+                vboBuffer.put(vertices[vertex].getRGBA());
+            }
+            vboBuffer.flip();
+
+            quads.get(0).setPosition(quads.get(0).getX() + 0.01f, quads.get(0).getY());
+
+            // Bind VBO and dynamically fill it with data
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vboID);
+            GL30.glBufferSubData(GL30.GL_ARRAY_BUFFER, 0, vboBuffer);
+
             // Bind VAO
             GL30.glBindVertexArray(vaoID);
             GL30.glEnableVertexAttribArray(0);
@@ -153,7 +187,7 @@ public class Application {
             GL30.glBindBuffer(GL30.GL_ELEMENT_ARRAY_BUFFER, iboID);
 
             // Draw the vertices
-            GL30.glDrawElements(GL30.GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
+            GL30.glDrawElements(GL30.GL_TRIANGLES, Quad.indicesCount, GL_UNSIGNED_INT, 0);
 
             // Unbind VAO
             GL30.glBindBuffer(GL30.GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -161,6 +195,8 @@ public class Application {
             GL30.glDisableVertexAttribArray(1);
             GL30.glBindVertexArray(0);
 
+            // Clear the VBO
+            vboBuffer.clear();
 
             glfwSwapBuffers(window); // swap the color buffers
             glfwPollEvents();

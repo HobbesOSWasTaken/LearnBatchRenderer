@@ -51,6 +51,35 @@ public class Vertex {
         return new float[] {this.rgba[0], this.rgba[1], this.rgba[2], this.rgba[3]};
     }
 
+    public float getX() {
+        return this.xyzw[0];
+    }
 
+    public float getY() {
+        return this.xyzw[1];
+    }
 
+    public float getZ() {
+        return this.xyzw[2];
+    }
+
+    public float getW() {
+        return this.xyzw[3];
+    }
+
+    public float getR() {
+        return this.rgba[0];
+    }
+
+    public float getG() {
+        return this.rgba[1];
+    }
+
+    public float getB() {
+        return this.rgba[2];
+    }
+
+    public float getA() {
+        return this.rgba[3];
+    }
 }
